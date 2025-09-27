@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON Diff Comparator</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f4f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        p {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+        }
+        .upload-area {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        input[type="file"] {
+            margin: 10px;
+            padding: 10px;
+            border: 2px solid #ecf0f1;
+            border-radius: 5px;
+            background: #fff;
+            transition: border-color 0.3s;
+        }
+        input[type="file"]:hover {
+            border-color: #3498db;
+        }
+        button {
+            padding: 12px 25px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s, transform 0.2s;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+        #output {
+            margin-top: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+            padding: 15px;
+            border-radius: 5px;
+            background: #fafafa;
+            border: 1px solid #ddd;
+        }
+        .diff-item {
+            margin-bottom: 15px;
+            padding: 15px;
+            border-left: 6px solid;
+            border-radius: 5px;
+            animation: fadeIn 0.5s ease-in;
+        }
+        .added { border-left-color: #2ecc71; background: #e8f5e9; }
+        .removed { border-left-color: #e74c3c; background: #fdecea; }
+        .changed { border-left-color: #f1c40f; background: #fef9e7; }
+        .unchanged { border-left-color: #95a5a6; background: #ecf0f1; }
+        .property { font-weight: bold; color: #2c3e50; }
+        .value { color: #2980b9; }
+        .diff-prop { text-decoration: underline; }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @media (max-width: 600px) {
+            .container { padding: 10px; }
+            button { width: 100%; margin-top: 10px; }
+            input[type="file"] { width: 100%; box-sizing: border-box; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>JSON Diff Comparator</h1>
+        <p>Upload two JSON files (arrays of objects) to compare. Files are sorted by "username" for accurate diffs.</p>
+        
+        <div class="upload-area">
+            <label>Left File (Original):</label><br>
+            <input type="file" id="file1" accept=".json">
+            <br><br>
+            <label>Right File (Modified):</label><br>
+            <input type="file" id="file2" accept=".json">
+            <br><br>
+            <button onclick="compareJSON()">Compare</button>
+        </div>
+        
+        <div id="output"></div>
+    </div>
+
+    <script>
+        function compareJSON() {
+            const file1Input = document.getElementById('file1');
+            const file2Input = document.getElementById('file2');
+            const output = document.getElementById('output');
+            
+            if (!file1Input.files[0] || !file2Input.files[0]) {
+                output.innerHTML = '<p style="color: #e74c3c;">Please upload both files.</p>';
+                return;
+            }
+            
+            const reader1 = new FileReader();
+            const reader2 = new FileReader();
+            
+            reader1.onload = function(e) {
+                try {
+                    const json1 = JSON.parse(e.target.result);
+                    if (!Array.isArray(json1)) throw new Error('Not an array');
+                    processComparison(json1, null);
+                } catch (err) {
+                    output.innerHTML = '<p style="color: #e74c3c;">Error parsing left file: ' + err.message + '</p>';
+                }
+            };
+            
+            reader2.onload = function(e) {
+                try {
+                    const json2 = JSON.parse(e.target.result);
+                    if (!Array.isArray(json2)) throw new Error('Not an array');
+                    processComparison(null, json2);
+                } catch (err) {
+                    output.innerHTML = '<p style="color: #e74c3c;">Error parsing right file: ' + err.message + '</p>';
+                }
+            };
+            
+            let leftData, rightData;
+            function processComparison(left, right) {
+                if (left) leftData = left;
+                if (right) rightData = right;
+                if (leftData && rightData) {
+                    displayDiff(sortByUsername(leftData), sortByUsername(rightData));
+                }
+            }
+            
+            reader1.readAsText(file1Input.files[0]);
+            reader2.readAsText(file2Input.files[0]);
+        }
+        
+        function sortByUsername(arr) {
+            return arr.slice().sort((a, b) => (a.username || '').localeCompare(b.username || ''));
+        }
+        
+        function displayDiff(leftArr, rightArr) {
+            const output = document.getElementById('output');
+            let html = '<h3>Sorted & Compared Diff:</h3>';
+            
+            const maxLen = Math.max(leftArr.length, rightArr.length);
+            for (let i = 0; i < maxLen; i++) {
+                const leftObj = leftArr[i];
+                const rightObj = rightArr[i];
+                
+                let className = 'unchanged';
+                let diffContent = '';
+                
+                if (!leftObj && rightObj) {
+                    className = 'added';
+                    diffContent = formatObject(rightObj, true);
+                } else if (leftObj && !rightObj) {
+                    className = 'removed';
+                    diffContent = formatObject(leftObj, false);
+                } else {
+                    const changes = compareObjects(leftObj, rightObj);
+                    if (Object.keys(changes).length > 0) {
+                        className = 'changed';
+                        diffContent = formatComparedObjects(leftObj, rightObj, changes);
+                    } else {
+                        diffContent = formatObject(leftObj, true);
+                    }
+                }
+                
+                html += `<div class="diff-item ${className}">${diffContent}</div>`;
+            }
+            
+            output.innerHTML = html;
+        }
+        
+        function compareObjects(obj1, obj2) {
+            const changes = {};
+            const keys = new Set([...Object.keys(obj1), ...Object.keys(obj2)]);
+            keys.forEach(key => {
+                if (JSON.stringify(obj1[key]) !== JSON.stringify(obj2[key])) {
+                    changes[key] = { left: obj1[key], right: obj2[key] };
+                }
+            });
+            return changes;
+        }
+        
+        function formatObject(obj, isRight) {
+            const side = isRight ? 'Right' : 'Left';
+            let str = `<strong>${side} only - Username: ${obj.username || 'N/A'}</strong><br>`;
+            Object.keys(obj).forEach(key => {
+                str += `<span class="property">${key}:</span> <span class="value">${JSON.stringify(obj[key])}</span><br>`;
+            });
+            return str;
+        }
+        
+        function formatComparedObjects(obj1, obj2, changes) {
+            let str = `<strong>Changed - Username: ${obj1.username}</strong><br>`;
+            Object.keys(obj1).forEach(key => {
+                if (!changes[key]) {
+                    str += `<span class="property">${key}:</span> <span class="value">${JSON.stringify(obj1[key])}</span><br>`;
+                }
+            });
+            Object.keys(changes).forEach(key => {
+                str += `<span class="property diff-prop">${key}:</span><br>`;
+                str += `&nbsp;&nbsp;Left: <span class="value">${JSON.stringify(changes[key].left)}</span><br>`;
+                str += `&nbsp;&nbsp;Right: <span class="value">${JSON.stringify(changes[key].right)}</span><br>`;
+            });
+            return str;
+        }
+    </script>
+</body>
+</html>
